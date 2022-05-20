@@ -1,5 +1,6 @@
 package com.mjy.java.lock.aqs;
 
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.test.AbstractQueuedSynchronizer;
 
@@ -32,6 +33,38 @@ public class CountDownLatch实现探索 {
     }
 
 
+    public static class 测试拦截多个线程{
+        public static void main(String[] args) throws InterruptedException {
+            CountDownLatch customCountDownLatch = new CountDownLatch(1);
+            for (int i = 0; i < 1; i++) {
+                new Thread(()->{
+                    try {
+                        TimeUnit.SECONDS.sleep(5);
+                        customCountDownLatch.countDown();
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                    System.out.println("执行countdown结束"+Thread.currentThread());
+                }).start();
+            }
+            customCountDownLatch.await();
+
+//            for (int i = 0; i < 2; i++) {
+//                new Thread(()->{
+//                    try {
+//                        customCountDownLatch.await();
+//                        System.out.println("等待结束"+Thread.currentThread());
+//                    } catch (InterruptedException e) {
+//                        e.printStackTrace();
+//                    }
+//                }).start();
+//            }
+            System.out.println("主线程结束");
+
+
+        }
+    }
+
 
 
 
@@ -50,12 +83,13 @@ public class CountDownLatch实现探索 {
             int getCount() {
                 return getState();
             }
-
+            //只有tryAcquireShared小于0，才真正去竞争锁
             protected int tryAcquireShared(int acquires) {
                 System.out.println("tryAcquireShared_"+Thread.currentThread().getName());
+                //初始化state的时候，就>0, 执行过程中递减到0，在此过程中，该方法一直返回<0,导致线程进入队列。
                 return (getState() == 0) ? 1 : -1;
             }
-
+            // 只有tryReleaseShared返回true才会唤起停止的线程，因此如果不是最终态，都返回false。
             protected boolean tryReleaseShared(int releases) {
                 // Decrement count; signal when transition to zero
                 for (;;) {
@@ -63,9 +97,11 @@ public class CountDownLatch实现探索 {
                     int c = getState();
                     System.out.println("tryReleaseShared_state="+c);
                     if (c == 0)
+                        // 已经超过了次数了，释放失败
                         return false;
                     int nextc = c-1;
                     if (compareAndSetState(c, nextc))
+                        //设置成功，如果最下一个为0，则表示已经结束，返回false, 否则返回true
                         return nextc == 0;
                 }
             }
